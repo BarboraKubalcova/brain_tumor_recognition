@@ -80,7 +80,7 @@ class BrainTumorModel(nn.Module):
     self.conv1 = nn.Sequential(
         nn.Conv2d(1,256,kernel_size=3), #output from this will be 126*126*256
         nn.MaxPool2d(2,2), # 63*63*256
-        nn.Conv2d(256,32,kernel_size=2) #63-2+1 = 62*62*32
+        nn.Conv2d(256,32,kernel_size=2) #63-2+1 => 62*62*32
     )
 
     # n-f+2p/s +1 
@@ -88,7 +88,7 @@ class BrainTumorModel(nn.Module):
     self.linear1 = nn.Linear(62,128)
     self.linear2 = nn.Linear(128,64)
     self.flat = nn.Flatten(1)
-    self.linear3 = nn.Linear(126976,2)
+    self.linear3 = nn.Linear(126976,2) 
 
 
   def forward(self,x):
@@ -107,7 +107,7 @@ model.to(device)
 loss_fn = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters())
 
-epochs = 3
+epochs = 5
 batch_size = 32
 loss_list = []
 
