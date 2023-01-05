@@ -17,7 +17,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class BrainMRIDataset(Dataset):
 
-  def __init__(self, data_dir = "data", reshape=True, height=128, width=128, autoencoder = False):
+  def __init__(self, data_dir = "data/training", reshape=True, height=128, width=128, autoencoder = False):
 
     self.dataDirectory = data_dir
     self.normal_links = glob(data_dir+'/NORMAL/*')
@@ -76,7 +76,7 @@ class BrainTumorModel(nn.Module):
 
   def __init__(self):      
     super().__init__()
-
+    # n_out = ((n_in + 2p - k)/ s) + 1 (k - kernel size, p - padding size, s - stride size)
     self.conv1 = nn.Sequential(
         nn.Conv2d(1,256,kernel_size=3), #output from this will be 126*126*256
         nn.MaxPool2d(2,2), # 63*63*256
@@ -131,8 +131,10 @@ for epoch in range(epochs):
 
   print("Epochs {}  Training Loss {:.2f}".format(epoch+1,total_loss/n))
 
-fig = plt.figure(figsize=(10,10))
-print(type(loss_list[0]))
+
+
+
+fig = plt.figure(figsize=(5,5))
 plt.plot(list(range(epochs)),loss_list)
 
 plt.title("Loss vs Epochs")
