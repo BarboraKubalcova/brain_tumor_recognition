@@ -63,7 +63,8 @@ class BrainMRIDataset(Dataset):
 
       image_array.append(array)
 
-    return [torch.tensor(image_array,device=device),torch.tensor(label_list,device=device)]
+    item = [torch.tensor(np.array(image_array),device=device),torch.tensor(label_list,device=device)]
+    return item
 
   def __repr__(self):
     return str(self.dataframe.head(10))
@@ -77,9 +78,8 @@ class BrainTumorModel(nn.Module):
     super().__init__()
 
     self.conv1 = nn.Sequential(
-        nn.Conv2d(1,256,kernel_size=3), #126*126*256
+        nn.Conv2d(1,256,kernel_size=3), #output from this will be 126*126*256
         nn.MaxPool2d(2,2), # 63*63*256
-
         nn.Conv2d(256,32,kernel_size=2) #63-2+1 = 62*62*32
     )
 
@@ -100,14 +100,14 @@ class BrainTumorModel(nn.Module):
 
     return x
      
-model = BrainTumorModel()
+model = BrainTumorModel().to(device)
 model.to(device)
 
 
 loss_fn = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters())
 
-epochs =5
+epochs = 3
 batch_size = 32
 loss_list = []
 
@@ -127,10 +127,32 @@ for epoch in range(epochs):
     loss.backward() # calculate the gradeint
     optimizer.step() # Wn = Wo - lr* gradeint
 
-  loss_list.append(total_loss/batch_size)
+  loss_list.append((total_loss/batch_size).detach().numpy())
 
   print("Epochs {}  Training Loss {:.2f}".format(epoch+1,total_loss/n))
 
+fig = plt.figure(figsize=(10,10))
+print(type(loss_list[0]))
+plt.plot(list(range(epochs)),loss_list)
 
+plt.title("Loss vs Epochs")
+plt.xlabel("Epochs")
+plt.ylabel("Loss")
+plt.show()
+
+
+
+# mapping = {0:"NO",1:"Yes"}
+# fig = plt.figure(figsize=(20,20))
+
+# for i in range(5):
+#   data,target = dataset[i]
+#   pred = model.forward(data.float())
+
+#   pred = torch.argmax(pred,dim=1)
+#   plt.subplot(5,5,i+1)
+#   plt.imshow(data[0][0].cpu())
+#   plt.title(f"Actual : {mapping[target.cpu().detach().item()]} Prediction : {mapping[pred.cpu().detach().item()]}")
+#   plt.show()
 
 
