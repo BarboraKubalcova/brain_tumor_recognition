@@ -82,6 +82,7 @@ class BrainTumorModel(nn.Module):
         nn.MaxPool2d(2,2), # 63*63*256
         nn.Conv2d(256,32,kernel_size=2) #63-2+1 => 62*62*32
     )
+    
 
     # n-f+2p/s +1 
 
