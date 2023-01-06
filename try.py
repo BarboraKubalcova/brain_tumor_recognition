@@ -7,7 +7,7 @@ import torchvision
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt 
 import numpy as np
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from torch.optim import Adam 
 from torch.optim import SGD 
 from torchvision.models import resnet18
@@ -15,39 +15,42 @@ from torchvision.models import resnet18
 # device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# hyper-parameters
-num_epochs = 10
-batch_size = 4
-learning_rate = 0.001
-
 #train and test data directory
-train_data_dir = "data/training"
-test_data_dir = "data/testing"
+train_data_dir = "data/train"
+test_data_dir = "data/val"
 
 
-image_size = (128, 128) # resizing data
+image_size = (128, 128)
+mean = np.array([0.5])
+std = np.array([0.5])
 
 train_transform = transforms.Compose([
     transforms.Grayscale(num_output_channels=1),
     transforms.ToTensor(),
+    transforms.RandomHorizontalFlip(),
     transforms.RandomRotation(degrees=15),
     transforms.Resize(size=image_size),
-    transforms.Normalize([0.5], [0.5])
+    transforms.Normalize(mean, std)
 ])
 
-test_trasform = transforms.Compose([
+val_trasform = transforms.Compose([
     transforms.Grayscale(num_output_channels=1),
     transforms.ToTensor(),
     transforms.Resize(size=image_size),
-    transforms.Normalize([0.5], [0.5])
+    transforms.Normalize(mean, std)
 ])
     
+# hyper-parameters
+num_epochs = 10
+batch_size = 4
+learning_rate = 0.00001
 
 train_dataset = ImageFolder(root=train_data_dir,transform=train_transform)
-test_dataset = ImageFolder(root=test_data_dir, transform=test_trasform)
+val_dataset = ImageFolder(root=test_data_dir, transform=val_trasform)
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+#test loader
 
 
 
@@ -102,6 +105,9 @@ for epoch in range(num_epochs):
 
         if (i + 1) % 5 == 0:
             print(f'Epoch [{epoch + 1}/{num_epochs}], Step [{i + 1}/{n_total_steps}], Loss: {loss.item():.4f}')
+    
+    
+    model.train()
 
 print('Finished Training')
 
@@ -113,7 +119,8 @@ with torch.no_grad():
     n_samples = 0
     n_class_correct = [0] * len(classes)
     n_class_samples = [0] * len(classes)
-    for images, labels in test_loader:
+
+    for images, labels in val_loader: # TODO: zmenit na test loader
         images = images.to(device)
         labels = labels.to(device)
         outputs = model(images)
@@ -128,6 +135,8 @@ with torch.no_grad():
             if (label == pred):
                 n_class_correct[label] += 1
             n_class_samples[label] += 1
+    model.eval()
+    
 
     acc = 100.0 * n_correct / n_samples
     print(f'Accuracy of the network: {acc:.4f}%')
