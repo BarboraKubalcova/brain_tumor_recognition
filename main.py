@@ -52,7 +52,7 @@ test_transform = transforms.Compose([
 
     
 # parameters
-num_epochs = 2
+num_epochs = 10
 batch_size = 4
 learning_rate = 0.0001
 classes = ['NORMAL', 'TUMOR']
