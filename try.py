@@ -11,13 +11,16 @@ from torch.utils.data import DataLoader
 from torch.optim import Adam 
 from torch.optim import SGD 
 from torchvision.models import resnet18
+import time as time
 
 # device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-#train and test data directory
+#train and val data directory
+data_dir = "data"
 train_data_dir = "data/train"
-test_data_dir = "data/val"
+val_data_dir = "data/val"
+test_data_dir = "data/test"
 
 
 image_size = (128, 128)
@@ -41,16 +44,17 @@ val_trasform = transforms.Compose([
 ])
     
 # hyper-parameters
-num_epochs = 10
+num_epochs = 2
 batch_size = 4
-learning_rate = 0.00001
+learning_rate = 0.0001
 
 train_dataset = ImageFolder(root=train_data_dir,transform=train_transform)
-val_dataset = ImageFolder(root=test_data_dir, transform=val_trasform)
+val_dataset = ImageFolder(root=val_data_dir, transform=val_trasform)
+test_dataset = ImageFolder(root=val_data_dir, transform=val_trasform)
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-#test loader
+test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
 
 
@@ -82,33 +86,46 @@ class BrainTumorModel(nn.Module):
     
 
 model = BrainTumorModel().to(device)
-classes = ('no tumor', 'tumor')
+classes = ('NORMAL', 'TUMOR')
 
 criterion = nn.CrossEntropyLoss()
 optimizer = SGD(model.parameters(), lr = learning_rate)
 
 n_total_steps = len(train_loader)
-epoch_acc = []
+
+
+
+
+
 # training loop
-for epoch in range(num_epochs):
-    for i, (images, labels) in enumerate(train_loader):
-        images = images.to(device)
-        labels = labels.to(device)
 
-        outputs = model(images)
+def train_model(model, criterion, optimizer, n_epochs = num_epochs):
+    since = time.time()
+
+    for epoch in range(num_epochs):
+        for i, (images, labels) in enumerate(train_loader):
+            images = images.to(device)
+            labels = labels.to(device)
+
+            outputs = model(images)
+            
+            loss = criterion(outputs, labels)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            if (i + 1) % 20 == 0:
+                print(f'Epoch [{epoch + 1}/{num_epochs}], Step [{i + 1}/{n_total_steps}], Loss: {loss.item():.4f}')
         
-        loss = criterion(outputs, labels)
+        
+    t = time.time() - since
+    print(f"Training took {t // 60}m {t // 60}s")
+    return model
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
 
-        if (i + 1) % 5 == 0:
-            print(f'Epoch [{epoch + 1}/{num_epochs}], Step [{i + 1}/{n_total_steps}], Loss: {loss.item():.4f}')
-    
-    
-    model.train()
-
+model = train_model(model, criterion, optimizer)
+model.eval()
 print('Finished Training')
 
 # PATH = 'model'
@@ -120,7 +137,7 @@ with torch.no_grad():
     n_class_correct = [0] * len(classes)
     n_class_samples = [0] * len(classes)
 
-    for images, labels in val_loader: # TODO: zmenit na test loader
+    for images, labels in test_loader: 
         images = images.to(device)
         labels = labels.to(device)
         outputs = model(images)
@@ -129,18 +146,20 @@ with torch.no_grad():
         n_samples += labels.size(0)
         n_correct += (predicted == labels).sum().item()
         
-        for i in range(batch_size):
+        for i in range(len(labels)): 
             label = labels[i]
             pred = predicted[i]
             if (label == pred):
                 n_class_correct[label] += 1
             n_class_samples[label] += 1
-    model.eval()
+    
     
 
     acc = 100.0 * n_correct / n_samples
     print(f'Accuracy of the network: {acc:.4f}%')
 
-    # for i in range(10):
-    #     acc = 100.0 * n_class_correct[i] / n_class_samples[i]
-    #     print(f'Accuracy of {classes[i]}: {acc} %')
+    for i in range(len(classes)):
+        acc = 100.0 * n_class_correct[i] / n_class_samples[i]
+        print(f'Accuracy of {classes[i]}: {acc} %')
+
+
