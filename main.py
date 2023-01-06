@@ -1,161 +1,197 @@
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import os
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
-from torch.utils.data import Dataset
-
-from sklearn.utils import shuffle
-from PIL import Image
-from glob import glob
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-class BrainMRIDataset(Dataset):
-
-  def __init__(self, data_dir = "data/training", reshape=True, height=128, width=128, autoencoder = False):
-
-    self.dataDirectory = data_dir
-    self.normal_links = glob(data_dir+'/NORMAL/*')
-    self.tumor_links = glob(data_dir+'/TUMOR/*')
-
-    self.height = height
-    self.width = width
-    self.reshape = reshape
-    self.autoencoder = autoencoder
-
-    labels = [0] * len(self.normal_links) + [1] * len(self.tumor_links)
-
-    image_links = self.normal_links + self.tumor_links
-
-    self.dataframe = pd.DataFrame({"image":image_links, "labels":labels})
-    self.dataframe.reset_index(inplace = True ,drop=True) # inplace - we are nor saving any variable
-
-  def __len__(self):
-    return len(self.normal_links)+len(self.tumor_links)
-
-  def __getitem__(self,idx):
-
-    image_list = self.dataframe["image"][idx]
-    label_list = self.dataframe["labels"][idx]
-
-    if type(image_list) == str:
-      image_list = [image_list]
-
-    if not isinstance(label_list,np.int64):
-      label_list = label_list.values
-
-    image_array = []
-
-    for image in image_list:
-      image = Image.open(image).convert("L")
-
-      if self.reshape:
-        image = image.resize((self.height,self.width))
-
-      array = np.asarray(image)
-
-      array = array.reshape(1,self.height,self.width)
-
-      image_array.append(array)
-
-    item = [torch.tensor(np.array(image_array),device=device),torch.tensor(label_list,device=device)]
-    return item
-
-  def __repr__(self):
-    return str(self.dataframe.head(10))
-
-dataset = BrainMRIDataset()
+from torchvision import transforms
+from torchvision.datasets import ImageFolder
+import torchvision
+import torchvision.transforms as transforms
+import matplotlib.pyplot as plt 
+import numpy as np
+from torch.utils.data import DataLoader
+from torch.optim import SGD 
+from torchvision.models import resnet18
+import time as time
 
 
+# device configuration
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+#train and val data directory
+data_dir = "data"
+train_data_dir = "data/train"
+val_data_dir = "data/val"
+test_data_dir = "data/test"
+
+
+image_size = (128, 128)
+mean = np.array([0.5, 0.5, 0.5])
+std = np.array([0.5, 0.5, 0.5])
+
+train_transform = transforms.Compose([
+    # transforms.Grayscale(num_output_channels=3),
+    transforms.ToTensor(),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(degrees=15),
+    transforms.Resize(size=image_size),
+    transforms.Normalize(mean, std)
+])
+
+val_trasform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Resize(size=image_size),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(degrees=15),
+    transforms.Normalize(mean, std)
+])
+
+test_transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Resize(size=image_size),
+    transforms.Normalize(mean, std)
+])
+
+    
+# parameters
+num_epochs = 15
+batch_size = 4
+learning_rate = 0.0001
+classes = ['NORMAL', 'TUMOR']
+
+# dataset preparation
+train_dataset = ImageFolder(root = train_data_dir,transform = train_transform)
+val_dataset = ImageFolder(root = val_data_dir, transform = val_trasform)
+test_dataset = ImageFolder(root = val_data_dir, transform = test_transform)
+
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
+# model class
 class BrainTumorModel(nn.Module):
+    def __init__(self):
+        super(BrainTumorModel, self).__init__()
+        self.rn18 = resnet18(weights='ResNet18_Weights.DEFAULT') 
+        self.fc = nn.Linear(in_features=512, out_features=2) # fully-conected layer
 
-  def __init__(self):      
-    super().__init__()
-    # n_out = ((n_in + 2p - k)/ s) + 1 (k - kernel size, p - padding size, s - stride size)
-    self.conv1 = nn.Sequential(
-        nn.Conv2d(1,256,kernel_size=3), #output from this will be 126*126*256
-        nn.MaxPool2d(2,2), # 63*63*256
-        nn.Conv2d(256,32,kernel_size=2) #63-2+1 => 62*62*32
-    )
+    def forward(self, x): 
+        x = self.rn18.conv1(x)
+        x = self.rn18.bn1(x)
+        x = self.rn18.relu(x)
+        x = self.rn18.maxpool(x)
+
+        x = self.rn18.layer1(x)
+        x = self.rn18.layer2(x)
+        x = self.rn18.layer3(x)
+        x = self.rn18.layer4(x)
+
+        x = self.rn18.avgpool(x) 
+        x = x.view(x.size(0), 512) # x.size(0) - size of the batch
+
+        x = self.fc(x)
+        return x
     
 
-    # n-f+2p/s +1 
+# training function 
+def train_model(model, criterion, optimizer, n_epochs = num_epochs):
+    since = time.time()
+    n_total_steps = len(train_loader)
+    # training loop
+    for epoch in range(n_epochs):
+        for i, (images, labels) in enumerate(train_loader):
+            images = images.to(device)
+            labels = labels.to(device)
+            outputs = model(images)
+            loss = criterion(outputs, labels)
 
-    self.linear1 = nn.Linear(62,128)
-    self.linear2 = nn.Linear(128,64)
-    self.flat = nn.Flatten(1)
-    self.linear3 = nn.Linear(126976,2) 
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            if (i + 1) % 25 == 0:
+                print(f'Epoch [{epoch + 1}/{num_epochs}], Step [{i + 1}/{n_total_steps}], Loss: {loss.item():.4f}')
+ 
+    t = time.time() - since
+    print(f"Training took {int(t) // 60}m {int(t % 60)}s")
+    return model
 
 
-  def forward(self,x):
-    x = F.relu(self.conv1(x))
-    x = F.relu(self.linear1(x))
-    x = self.linear2(x)
-    x = self.flat(x)
-    x = self.linear3(x)
-
-    return x
-     
 model = BrainTumorModel().to(device)
-model.to(device)
+criterion = nn.CrossEntropyLoss()
+optimizer = SGD(model.parameters(), lr = learning_rate)
 
 
-loss_fn = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters())
+model = train_model(model, criterion, optimizer)
+model.eval()
+print('Finished Training')
 
-epochs = 5
-batch_size = 32
-loss_list = []
+epoch_acc = []
+# validation loop
+for i in range(num_epochs):
+    with torch.no_grad():
+        n_correct = 0
+        n_samples = 0
+        for images_val, labels_val in val_loader:
+            images_val = images_val.to(device)
+            labels_val = labels_val.to(device)
+            outputs = model(images_val)
+            _, predicted = torch.max(outputs, 1)
+            n_samples += labels_val.size(0)
+            n_correct += (predicted == labels_val).sum().item()
 
-for epoch in range(epochs):
-  total_loss = 0.0
-
-  for n in range(len(dataset)//batch_size):
-
-    data , target = dataset[n*batch_size : (n+1)*batch_size]
-
-    ypred = model.forward(data.float())
-    loss = loss_fn(ypred,target)
-
-    total_loss+=loss
-
-    optimizer.zero_grad() #clear the gradients
-    loss.backward() # calculate the gradeint
-    optimizer.step() # Wn = Wo - lr* gradeint
-
-  loss_list.append((total_loss/batch_size).detach().numpy())
-
-  print("Epochs {}  Training Loss {:.2f}".format(epoch+1,total_loss/n))
+        acc = 100.0 * n_correct / n_samples
+        epoch_acc.append(acc)
 
 
+with torch.no_grad():
+    n_correct = 0
+    n_samples = 0
+    n_class_correct = [0] * len(classes)
+    n_class_samples = [0] * len(classes)
+
+    for images, labels in test_loader: 
+        images = images.to(device)
+        labels = labels.to(device)
+        outputs = model(images)
+        # max returns (value ,index)
+        _, predicted = torch.max(outputs, 1)
+        n_samples += labels.size(0)
+        n_correct += (predicted == labels).sum().item()
+        
+        for i in range(len(labels)): 
+            label = labels[i]
+            pred = predicted[i]
+            if (label == pred):
+                n_class_correct[label] += 1
+            n_class_samples[label] += 1
+    
+    
+
+    acc = 100.0 * n_correct / n_samples
+    print(f'Accuracy of the network: {acc:.4f}%')
+
+    for i in range(len(classes)):
+        acc = 100.0 * n_class_correct[i] / n_class_samples[i]
+        print(f'Accuracy of {classes[i]}: {acc:.2f}%')
 
 
-fig = plt.figure(figsize=(5,5))
-plt.plot(list(range(epochs)),loss_list)
 
-plt.title("Loss vs Epochs")
-plt.xlabel("Epochs")
-plt.ylabel("Loss")
+epoch = [x+1 for x in range(num_epochs)]
+plt.plot(epoch, epoch_acc)
+plt.xlabel("epoch")
+plt.ylabel("acc %")
 plt.show()
 
 
+mapping = {0:"NO",1:"Yes"}
+fig = plt.figure(figsize=(5,5))
 
-# mapping = {0:"NO",1:"Yes"}
-# fig = plt.figure(figsize=(20,20))
-
-# for i in range(5):
-#   data,target = dataset[i]
-#   pred = model.forward(data.float())
-
-#   pred = torch.argmax(pred,dim=1)
-#   plt.subplot(5,5,i+1)
-#   plt.imshow(data[0][0].cpu())
-#   plt.title(f"Actual : {mapping[target.cpu().detach().item()]} Prediction : {mapping[pred.cpu().detach().item()]}")
-#   plt.show()
-
-
+for i, (images, labels) in enumerate(train_loader):
+    if i == 5:
+        break
+    images = images.to(device)
+    labels = labels.to(device)
+    outputs = model.forward(images)
+    _, predicted = torch.max(outputs, 1)
+    plt.imshow(images[0][0].cpu())
+    plt.title(f"Reality: {mapping[int(labels[0].detach().numpy())]} Predicted: {mapping[int(predicted[0].detach().numpy())]}")
+    plt.show()
