@@ -52,7 +52,7 @@ test_transform = transforms.Compose([
 
     
 # parameters
-num_epochs = 50
+num_epochs = 5
 batch_size = 4
 learning_rate = 0.0001
 classes = ['NORMAL', 'TUMOR']
@@ -93,17 +93,17 @@ class BrainTumorModel(nn.Module):
 
 def validate_model(model):
     # validation loop
-    for _ in range(num_epochs):
-        with torch.no_grad():
-            n_correct = 0
-            n_samples = 0
-            for images, labels in val_loader:
-                images = images.to(device)
-                labels = labels.to(device)
-                outputs = model(images)
-                _, predicted = torch.max(outputs, 1)
-                n_samples += labels.size(0)
-                n_correct += (predicted == labels).sum().item()
+    
+    with torch.no_grad():
+        n_correct = 0
+        n_samples = 0
+        for images, labels in val_loader:
+            images = images.to(device)
+            labels = labels.to(device)
+            outputs = model(images)
+            _, predicted = torch.max(outputs, 1)
+            n_samples += labels.size(0)
+            n_correct += (predicted == labels).sum().item()
 
     return 100.0 * n_correct / n_samples
     
