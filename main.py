@@ -52,7 +52,7 @@ test_transform = transforms.Compose([
 
     
 # parameters
-num_epochs = 10
+num_epochs = 50
 batch_size = 4
 learning_rate = 0.0001
 classes = ['NORMAL', 'TUMOR']
@@ -91,6 +91,24 @@ class BrainTumorModel(nn.Module):
         return x
     
 
+def validate_model(model):
+    # validation loop
+    for _ in range(num_epochs):
+        with torch.no_grad():
+            n_correct = 0
+            n_samples = 0
+            for images, labels in val_loader:
+                images = images.to(device)
+                labels = labels.to(device)
+                outputs = model(images)
+                _, predicted = torch.max(outputs, 1)
+                n_samples += labels.size(0)
+                n_correct += (predicted == labels).sum().item()
+
+    return 100.0 * n_correct / n_samples
+    
+
+acc_per_epoch = []
 # training function 
 def train_model(model, criterion, optimizer, n_epochs = num_epochs):
     since = time.time()
@@ -109,6 +127,10 @@ def train_model(model, criterion, optimizer, n_epochs = num_epochs):
 
             if (i + 1) % 25 == 0:
                 print(f'Epoch [{epoch + 1}/{num_epochs}], Step [{i + 1}/{n_total_steps}], Loss: {loss.item():.4f}')
+
+        acc_per_epoch.append(validate_model(model))
+        print(f'Model acc on val data [{epoch+1}/{n_epochs}]: {acc_per_epoch[-1]:.2f}')
+
  
     t = time.time() - since
     print(f"Training took {int(t) // 60}m {int(t % 60)}s")
@@ -124,22 +146,8 @@ model = train_model(model, criterion, optimizer)
 model.eval()
 print('Finished Training')
 
-epoch_acc = []
-# validation loop
-for i in range(num_epochs):
-    with torch.no_grad():
-        n_correct = 0
-        n_samples = 0
-        for images_val, labels_val in val_loader:
-            images_val = images_val.to(device)
-            labels_val = labels_val.to(device)
-            outputs = model(images_val)
-            _, predicted = torch.max(outputs, 1)
-            n_samples += labels_val.size(0)
-            n_correct += (predicted == labels_val).sum().item()
-
-        acc = 100.0 * n_correct / n_samples
-        epoch_acc.append(acc)
+FILE = "model.pth"
+torch.save(model, FILE)
 
 
 with torch.no_grad():
@@ -176,7 +184,7 @@ with torch.no_grad():
 
 
 epoch = [x+1 for x in range(num_epochs)]
-plt.plot(epoch, epoch_acc)
+plt.plot(epoch, acc_per_epoch)
 plt.xlabel("epoch")
 plt.ylabel("acc %")
 plt.show()
